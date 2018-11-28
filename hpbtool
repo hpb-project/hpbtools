@@ -1,0 +1,343 @@
+#!/bin/bash
+
+
+# 定义变量
+TMPDIR=/tmp/_hpbinstall
+INSTALLDIR=/opt/ghpb-bin
+UPDATEKERNEL=0
+FILEPATH=$0
+
+# 定义函数
+function log()
+{
+    if [ "$1" != "" ];then
+        echo "[`date +%T`] $1"
+    else
+        echo ""
+    fi
+
+}
+
+function updateKernel()
+{
+    ret=`wget https://github.com/xueqianLu/common_files/raw/master/other/update_kernel_eng.tar.gz > wget.log 2>&1`
+    if [ $ret -eq 0 ]
+    then
+        tar zxvf update_kernel_eng.tar.gz
+        cd update_kernel
+        install=`dpkg -i *.deb`
+        if [ $install -eq 0 ]
+        then
+            UPDATEKERNEL=1
+            log "升级内核成功，重启后生效"
+        else
+            log "升级内核失败"
+            exit 1
+        fi
+    else
+        log "下载升级文件失败，日志如下:"
+        cat wget.log
+        exit 1
+    fi
+}
+
+function kernelCheck()
+{
+    ret=`wget  https://github.com/hpb-project/libboe/raw/master/test/boehashtest > wget.log 2>&1 `
+    if [ $ret -ne 0 ];then
+        log "下载测试程序失败, 日志如下:"
+        cat wget.log
+        exit 1
+    fi
+
+    chmod +x boehashtest
+    ret=`./boehashtest 1 2 3 4`
+    if [ $ret -eq 0 ];then
+        log "内核检查通过"
+    elif [ $ret -eq 1 ];then
+        log "未检测到boe硬件，暂时跳过"
+    elif [ $ret -eq 3 ];then
+        read -r -p "内核版本与boe硬件不兼容,需要升级内核,是否确定升级? [y/N]" response
+        if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]];then
+            updateKernel
+        else
+            log "退出安装"
+            exit 1
+        fi
+    fi
+}
+
+function getNewGhpb()
+{
+    log "下载最新版ghpb"
+    NewGhpb=`curl https://github.com/hpb-project/hpb-release/tree/master/bin 2>/dev/null | grep -Eo "ghpb-v([0-9].)+tar.gz" | uniq | sort -r  | head -n 1 | awk -F . 'BEGIN{OFS="."} {print $1,$2,$3,$4}'`
+    log "当前最新版本为 $NewGhpb"
+    tarball=${NewGhpb}.tar.gz
+    url="https://github.com/hpb-project/hpb-release/raw/master/bin/$tarball"
+    ret=`wget $url > wget.log 2>&1`
+    if [ $ret -eq 0 ];then
+        tar zxvf $tarball
+        cp $NewGhpb/* $INSTALLDIR/
+        chmod 755 $INSTALLDIR -R
+        return $?
+    else
+        log "下载最新版本失败, 日志如下:"
+        cat wget.log
+        exit 1
+    fi
+}
+
+function getGensis()
+{
+    log "下载gensis.json"
+    ret=`wget https://raw.githubusercontent.com/hpb-project/hpb-release/master/config/gensis.json > wget.log 2>&1`
+    if [ $ret -ne 0 ];then
+        log "下载gensis.json失败, 日志如下:"
+        cat wget.log
+        exit 1
+    else
+        cp gensis.json $INSTALLDIR/
+    fi
+}
+
+function installNTP()
+{
+    NTP=`which ntpd`
+    if [ $NTP == "" ]
+    then
+        log "安装 ntp"
+        apt-get install ntp
+        echo "server cn.pool.ntp.org prefer" >> /etc/ntp.conf
+        echo "nameserver 8.8.8.8"  >> /etc/resolv.conf
+    else
+        log "检测到已安装 ntp"
+        systemctl stop ntp
+    fi
+
+    log "同步本地时间"
+    ntpdate cn.pool.ntp.org 
+    hwclock --systohc
+    log "启动ntp服务"
+    systemctl enable ntp
+    systemctl start ntp
+}
+
+function install()
+{
+    if [[ $EUID -eq 0 ]]
+    then
+        clear
+        if [ ! -f /bin/hpbtool ]; then
+            cp $FILEPATH /bin/hpbtool
+            chmod 755 /bin/hpbtool
+        fi
+
+        log "注意:"
+        log "  本脚本将会删除 $INSTALLDIR 下的所有内容并将最新版的 ghpb 安装到 $INSTALLDIR 目录下. "
+        log "如果你之前在其他位置已经安装过，请不要再使用之前的版本，以免发生冲突."
+        log ""
+        log "请确保你已经将账户的keystore文件存放到本机器的某个目录下,稍后将会用到它."
+        log "ghpb 程序需要用到 UDP/TCP 下的30303 和30403两个端口，请确保它们是开放状态."
+        read -r -p "确定要继续安装吗? [y/N] " response
+        if [[ "$response" =~ ^([yY][eE][sS]|[yY])+$ ]]
+        then
+            if [ -d $TMPDIR ]; then
+                rm -rf $TMPDIR
+            fi
+            mkdir $TMPDIR && cd $TMPDIR
+
+            OSVERSION="1604"
+            CUR_VERSION=$( lsb_release -r | awk '{ print $2 }' | sed 's/[.]//' )
+            if [ "$CUR_VERSION" == "$OSVERSION" ]
+            then
+                log "检查并删除已经安装的文件"
+                if [ -d $INSTALLDIR ]; then
+                    rm -rf $INSTALLDIR
+                fi
+
+                if [ -f /etc/systemd/system/ghpb@.service ]; then
+                    systemctl stop ghpb@root.service
+                    systemctl disable ghpb@root.service
+                    rm -rf /etc/systemd/system/ghpb@.service
+                fi
+
+                log "停掉当前运行的所有ghpb程序"
+                killall -9 ghpb iperf3 > /dev/null 2>&1
+
+                log "创建安装目录"
+                mkdir $INSTALLDIR
+
+                # 1. 输入keystore
+                echo -n "<<< 请输入账户keystore所在路径并按[Enter]结束: "
+                read KEYSTORE
+                if [[ -z "$KEYSTORE" ]]; then
+                    printf '%s\n' "你没有输入keystore路径"
+                    exit 1
+                fi
+
+                # 2. 输入账户地址
+                echo -n "<<< 请输入账户地址并按[Enter]结束: "
+                read ACCOUNT
+                if [[ -z "$ACCOUNT" ]]; then
+                    printf '%s\n' "你没有输入账户地址"
+                    exit 1
+                fi
+
+                # 3. 输入账户密码
+                echo -n "<<< 请输入账户的密码并按[Enter]结束: "
+                read ACCOUNTPASSWORD
+                if [[ -z "$ACCOUNTPASSWORD" ]]; then
+                    printf '%s\n' "你没有输入账户的密码"
+                    exit 1
+                fi
+
+                # 4. 检查内核
+                log "开始检查内核"
+                kernelCheck
+
+                # 5. 检查安装ntp
+                installNTP
+
+                # 6. 下载新版ghpb
+                getNewGhpb
+
+                # 7. 下载gensis.json
+                getGensis
+
+                # 8. 制作 ghpb.service 文件 
+cat <<EOF > /etc/systemd/system/ghpb@.service
+[Unit]
+Description=HPB
+Requires=network.target
+
+[Service]
+Type=simple
+User=%I
+ExecStart=$INSTALLDIR/ghpb --datadir $INSTALLDIR/node/data --networkid 100 --verbosity 3 --unlock $ACCOUNT --password $INSTALLDIR/pwd --rpc --rpcport 8545 --rpcaddr 0.0.0.0 --rpcapi hpb,web3,admin,txpool,debug,personal,net,miner,prometheus 
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+                log "初始化节点"
+                cd $INSTALLDIR
+                ./ghpb --datadir node/data init gensis.json
+
+                log "拷贝keystore文件"
+                mkdir node/data/keystore
+                cp $KEYSTORE ./node/data/keystore/
+
+                log "创建密码文件"
+                echo "$ACCOUNTPASSWORD" > $INSTALLDIR/pwd
+
+                log "设置ghpb开机启动"
+                systemctl enable ghpb@root.service
+
+                log "清除临时目录"
+                rm -rf $TMPDIR
+                cp  $FILEPATH /bin/hpbtool
+
+                if [ $UPDATEKERNEL -eq 1 ]
+                then
+                    log "ghpb安装完成，由于你升级了内核，需要重启服务器才能启动节点."
+                    log "服务器重启后ghpb程序会自动运行,你可以输入 $INSTALLDIR/ghpb attach http://127.0.0.1:8545 进入ghpb控制台"
+                    exit 0
+                else
+                    log "启动ghpb"
+                    systemctl start ghpb@root.service
+                    # 等待ghpb rpc启动
+                    sleep 5
+                    log "ghpb已经启动,你可以输入 $INSTALLDIR/ghpb attach http://127.0.0.1:8545 进入ghpb控制台"
+                    exit 0
+                fi
+            else
+                log "请使用 Ubuntu 16.04 版本操作系统"
+            fi
+        else
+            log "退出安装"
+        fi
+    else
+        log "请使用root权限执行本脚本"
+        exit -1
+    fi
+}
+
+function update()
+{
+    if [[ $EUID -eq 0 ]]
+    then
+        if [ -d $TMPDIR ]; then
+            rm -rf $TMPDIR
+        fi
+        mkdir $TMPDIR && cd $TMPDIR
+
+        if [ -f /etc/systemd/system/ghpb@.service ]; then
+            systemctl stop ghpb@root.service
+        else
+            log "你还未安装ghpb,请执行 hpbtool install 命令"
+            exit 1
+        fi
+        getNewGhpb
+        systemctl start ghpb@root.service
+        log "程序升级完成"
+    else
+        log "请使用root权限执行本脚本"
+        exit -1
+    fi
+}
+
+function getlog()
+{
+    journalctl -u ghpb@root.service --no-pager > hpb.log
+    log "已生成日志文件 hpb.log "
+}
+
+function taillog()
+{
+    journalctl -u ghpb@root.service -f
+}
+
+function catchlog()
+{
+    journalctl -u ghpb@root.service 
+}
+
+function attach()
+{
+    $INSTALLDIR/ghpb attach http://127.0.0.1:8545
+}
+
+function help()
+{
+    echo ""
+    echo "hpbtool 用法:"
+    echo "   hpbtool install        安装/重新安装 ghpb程序"
+    echo "   hpbtool update         更新官方最新版发布的 ghpb 程序"
+    echo "   hpbtool attach         登录到ghpb控制台"
+    echo "   hpbtool getecho        生成ghpb运行的日志文件"
+    echo "   hpbtool tailecho       实时查看ghpb的日志信息"
+    echo "   hpbtool catchecho      查看ghpb运行的历史日志"
+}
+
+if [ $# -ne 1 ];then
+    help
+    exit 0
+fi
+param=$1
+case $param in 
+    "install") install
+        ;;
+    "update") update
+        ;;
+    "attach") attach
+        ;;
+    "getlog") getlog
+        ;;
+    "taillog") taillog
+        ;;
+    "catchlog") catchlog
+        ;;
+    *) help
+        ;;
+esac
