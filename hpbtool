@@ -20,18 +20,20 @@ function log()
 
 function updateKernel()
 {
-    ret=`wget https://github.com/xueqianLu/common_files/raw/master/other/update_kernel_eng.tar.gz > wget.log 2>&1`
+    wget https://github.com/xueqianLu/common_files/raw/master/other/update_kernel_eng.tar.gz > wget.log 2>&1
+    ret=$?
     if [ $ret -eq 0 ]
     then
-        tar zxvf update_kernel_eng.tar.gz
+        tar zxvf update_kernel_eng.tar.gz > /dev/null
         cd update_kernel
-        install=`dpkg -i *.deb`
+        install=`dpkg -i *.deb > updatekernel.log 2>&1`
         if [ $install -eq 0 ]
         then
             UPDATEKERNEL=1
             log "升级内核成功，重启后生效"
         else
-            log "升级内核失败"
+            log "升级内核失败, 日志如下:"
+            cat updatekernel.log
             exit 1
         fi
     else
@@ -43,15 +45,17 @@ function updateKernel()
 
 function kernelCheck()
 {
-    ret=`wget  https://github.com/hpb-project/libboe/raw/master/test/boehashtest > wget.log 2>&1 `
-    if [ $ret -ne 0 ];then
+    wget  https://github.com/hpb-project/libboe/raw/master/test/boehashtest > wget.log 2>&1 
+    ret=$?
+    if [ $ret -ne 0 ] ;then
         log "下载测试程序失败, 日志如下:"
         cat wget.log
         exit 1
     fi
 
     chmod +x boehashtest
-    ret=`./boehashtest 1 2 3 4`
+    ./boehashtest 1 2 3 4 > boehashtest.log
+    ret=$?
     if [ $ret -eq 0 ];then
         log "内核检查通过"
     elif [ $ret -eq 1 ];then
@@ -74,9 +78,10 @@ function getNewGhpb()
     log "当前最新版本为 $NewGhpb"
     tarball=${NewGhpb}.tar.gz
     url="https://github.com/hpb-project/hpb-release/raw/master/bin/$tarball"
-    ret=`wget $url > wget.log 2>&1`
+    wget $url > wget.log 2>&1
+    ret=$?
     if [ $ret -eq 0 ];then
-        tar zxvf $tarball
+        tar zxvf $tarball >/dev/null 2>&1
         cp $NewGhpb/* $INSTALLDIR/
         chmod 755 $INSTALLDIR -R
         return $?
@@ -90,7 +95,8 @@ function getNewGhpb()
 function getGensis()
 {
     log "下载gensis.json"
-    ret=`wget https://raw.githubusercontent.com/hpb-project/hpb-release/master/config/gensis.json > wget.log 2>&1`
+    wget https://raw.githubusercontent.com/hpb-project/hpb-release/master/config/gensis.json > wget.log 2>&1
+    ret=$?
     if [ $ret -ne 0 ];then
         log "下载gensis.json失败, 日志如下:"
         cat wget.log
@@ -106,7 +112,7 @@ function installNTP()
     if [ $NTP == "" ]
     then
         log "安装 ntp"
-        apt-get install ntp
+        apt-get install -y ntp > ntp.log 2>&1
         echo "server cn.pool.ntp.org prefer" >> /etc/ntp.conf
         echo "nameserver 8.8.8.8"  >> /etc/resolv.conf
     else
@@ -115,11 +121,11 @@ function installNTP()
     fi
 
     log "同步本地时间"
-    ntpdate cn.pool.ntp.org 
-    hwclock --systohc
+    ntpdate cn.pool.ntp.org  >> ntp.log 2>&1
+    hwclock --systohc       >> ntp.log 2>&1
     log "启动ntp服务"
-    systemctl enable ntp
-    systemctl start ntp
+    systemctl enable ntp    >> ntp.log 2>&1
+    systemctl start ntp     >> ntp.log 2>&1
 }
 
 function install()
@@ -193,7 +199,7 @@ function install()
 
                 # 4. 检查内核
                 log "开始检查内核"
-                kernelCheck
+                #kernelCheck
 
                 # 5. 检查安装ntp
                 installNTP
@@ -222,7 +228,7 @@ EOF
 
                 log "初始化节点"
                 cd $INSTALLDIR
-                ./ghpb --datadir node/data init gensis.json
+                ./ghpb --datadir node/data init gensis.json > ghpbinit.log 
 
                 log "拷贝keystore文件"
                 mkdir node/data/keystore
@@ -236,19 +242,18 @@ EOF
 
                 log "清除临时目录"
                 rm -rf $TMPDIR
-                cp  $FILEPATH /bin/hpbtool
 
                 if [ $UPDATEKERNEL -eq 1 ]
                 then
                     log "ghpb安装完成，由于你升级了内核，需要重启服务器才能启动节点."
-                    log "服务器重启后ghpb程序会自动运行,你可以输入 $INSTALLDIR/ghpb attach http://127.0.0.1:8545 进入ghpb控制台"
+                    log "服务器重启后ghpb程序会自动运行,你可以输入 hpbtool attach  进入ghpb控制台"
                     exit 0
                 else
                     log "启动ghpb"
                     systemctl start ghpb@root.service
                     # 等待ghpb rpc启动
                     sleep 5
-                    log "ghpb已经启动,你可以输入 $INSTALLDIR/ghpb attach http://127.0.0.1:8545 进入ghpb控制台"
+                    log "ghpb已经启动,你可以输入 hpbtool attach 进入ghpb控制台"
                     exit 0
                 fi
             else
@@ -308,12 +313,30 @@ function attach()
     $INSTALLDIR/ghpb attach http://127.0.0.1:8545
 }
 
+function start()
+{
+    systemctl start ghpb@root.service
+}
+
+function stop()
+{
+    systemctl stop ghpb@root.service
+}
+
+function status()
+{
+    systemctl status ghpb@root.service
+}
+
 function help()
 {
     echo ""
     echo "hpbtool 用法:"
     echo "   hpbtool install        安装/重新安装 ghpb程序"
     echo "   hpbtool update         更新官方最新版发布的 ghpb 程序"
+    echo "   hpbtool start          启动ghpb程序"
+    echo "   hpbtool status         查看ghpb程序是否启动"
+    echo "   hpbtool stop           停止ghpb程序"
     echo "   hpbtool attach         登录到ghpb控制台"
     echo "   hpbtool getecho        生成ghpb运行的日志文件"
     echo "   hpbtool tailecho       实时查看ghpb的日志信息"
