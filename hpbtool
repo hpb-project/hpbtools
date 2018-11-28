@@ -353,6 +353,12 @@ case $param in
         ;;
     "update") update
         ;;
+    "start") start
+        ;;
+    "status") status
+        ;;
+    "stop") stop
+        ;;
     "attach") attach
         ;;
     "getlog") getlog
