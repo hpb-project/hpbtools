@@ -45,7 +45,7 @@ function updateKernel()
 
 function kernelCheck()
 {
-    wget  -P $TMPDIR https://github.com/hpb-project/libboe/raw/master/test/boehashtest > wget.log 2>&1 
+    wget -P $TMPDIR https://github.com/hpb-project/libboe/raw/master/test/boehashtest > wget.log 2>&1 
     ret=$?
     if [ $ret -ne 0 ] ;then
         log "下载测试程序失败, 日志如下:"
@@ -201,7 +201,7 @@ function install()
 
                 # 4. 检查内核
                 log "开始检查内核"
-                #kernelCheck
+                kernelCheck
 
                 # 5. 检查安装ntp
                 installNTP
