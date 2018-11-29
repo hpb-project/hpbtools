@@ -153,7 +153,7 @@ function install()
             mkdir $TMPDIR && cd $TMPDIR
 
             echo "安装 git wget curl vim"
-            apt-get install -y git wget curl vim
+            apt-get install -y git wget curl vim > /dev/null 2>&1
             OSVERSION="1604"
             CUR_VERSION=$( lsb_release -r | awk '{ print $2 }' | sed 's/[.]//' )
             if [ "$CUR_VERSION" == "$OSVERSION" ]
