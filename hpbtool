@@ -20,7 +20,7 @@ function log()
 
 function updateKernel()
 {
-    wget https://github.com/xueqianLu/common_files/raw/master/other/update_kernel_eng.tar.gz > wget.log 2>&1
+    wget -P $TMPDIR https://github.com/xueqianLu/common_files/raw/master/other/update_kernel_eng.tar.gz > wget.log 2>&1
     ret=$?
     if [ $ret -eq 0 ]
     then
@@ -45,7 +45,7 @@ function updateKernel()
 
 function kernelCheck()
 {
-    wget  https://github.com/hpb-project/libboe/raw/master/test/boehashtest > wget.log 2>&1 
+    wget  -P $TMPDIR https://github.com/hpb-project/libboe/raw/master/test/boehashtest > wget.log 2>&1 
     ret=$?
     if [ $ret -ne 0 ] ;then
         log "下载测试程序失败, 日志如下:"
@@ -294,18 +294,36 @@ function update()
 
 function getlog()
 {
-    journalctl -u ghpb@root.service --no-pager > hpb.log
+    if [[ $EUID -eq 0 ]]
+    then
+        journalctl -u ghpb@root.service --no-pager > hpb.log
+    else
+        log "请使用root权限执行本脚本"
+        exit -1
+    fi
     log "已生成日志文件 hpb.log "
 }
 
 function taillog()
 {
-    journalctl -u ghpb@root.service -f
+    if [[ $EUID -eq 0 ]]
+    then
+        journalctl -u ghpb@root.service -f
+    else
+        log "请使用root权限执行本脚本"
+        exit -1
+    fi
 }
 
 function catchlog()
 {
-    journalctl -u ghpb@root.service 
+    if [[ $EUID -eq 0 ]]
+    then
+        journalctl -u ghpb@root.service 
+    else
+        log "请使用root权限执行本脚本"
+        exit -1
+    fi
 }
 
 function attach()
@@ -315,12 +333,24 @@ function attach()
 
 function start()
 {
-    systemctl start ghpb@root.service
+    if [[ $EUID -eq 0 ]]
+    then
+        systemctl start ghpb@root.service
+    else
+        log "请使用root权限执行本脚本"
+        exit -1
+    fi
 }
 
 function stop()
 {
-    systemctl stop ghpb@root.service
+    if [[ $EUID -eq 0 ]]
+    then
+        systemctl stop ghpb@root.service
+    else
+        log "请使用root权限执行本脚本"
+        exit -1
+    fi
 }
 
 function status()
@@ -338,9 +368,9 @@ function help()
     echo "   hpbtool status         查看ghpb程序是否启动"
     echo "   hpbtool stop           停止ghpb程序"
     echo "   hpbtool attach         登录到ghpb控制台"
-    echo "   hpbtool getecho        生成ghpb运行的日志文件"
-    echo "   hpbtool tailecho       实时查看ghpb的日志信息"
-    echo "   hpbtool catchecho      查看ghpb运行的历史日志"
+    echo "   hpbtool getlog         生成ghpb运行的日志文件"
+    echo "   hpbtool taillog        实时查看ghpb的日志信息"
+    echo "   hpbtool catchlog       查看ghpb运行的历史日志"
 }
 
 if [ $# -ne 1 ];then
