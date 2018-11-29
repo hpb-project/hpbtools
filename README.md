@@ -7,6 +7,7 @@
 
 # 安装ghpb
 ```
+$ sudo apt-get install -y git
 $ git clone https://github.com/hpb-project/hpbtools
 $ cd hpbtools
 $ ./hpbtool help

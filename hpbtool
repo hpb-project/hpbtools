@@ -152,6 +152,7 @@ function install()
             fi
             mkdir $TMPDIR && cd $TMPDIR
 
+            apt-get install -y git wget curl
             OSVERSION="1604"
             CUR_VERSION=$( lsb_release -r | awk '{ print $2 }' | sed 's/[.]//' )
             if [ "$CUR_VERSION" == "$OSVERSION" ]
