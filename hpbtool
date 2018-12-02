@@ -26,7 +26,8 @@ function updateKernel()
     then
         tar zxvf update_kernel_eng.tar.gz > /dev/null
         cd update_kernel
-        install=`dpkg -i *.deb > updatekernel.log 2>&1`
+        dpkg -i *.deb > updatekernel.log 2>&1
+	install=$?
         if [ $install -eq 0 ]
         then
             UPDATEKERNEL=1
@@ -75,6 +76,11 @@ function getNewGhpb()
 {
     log "下载最新版ghpb"
     NewGhpb=`curl https://github.com/hpb-project/hpb-release/tree/master/bin 2>/dev/null | grep -Eo "ghpb-v([0-9].)+tar.gz" | uniq | sort -r  | head -n 1 | awk -F . 'BEGIN{OFS="."} {print $1,$2,$3,$4}'`
+    if [ "$NewGhpb" == "" ]; then
+        log "检测最新版本失败，curl 详细输出如下："
+        curl https://github.com/hpb-project/hpb-release/tree/master/bin
+        exit 1
+    fi
     log "当前最新版本为 $NewGhpb"
     tarball=${NewGhpb}.tar.gz
     url="https://github.com/hpb-project/hpb-release/raw/master/bin/$tarball"
@@ -109,7 +115,7 @@ function getGensis()
 function installNTP()
 {
     NTP=`which ntpd`
-    if [ $NTP == "" ]
+    if [ "$NTP" == "" ]
     then
         log "安装 ntp"
         apt-get install -y ntp > ntp.log 2>&1
