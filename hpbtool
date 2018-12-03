@@ -227,7 +227,7 @@ Requires=network.target
 [Service]
 Type=simple
 User=%I
-ExecStart=$INSTALLDIR/ghpb --datadir $INSTALLDIR/node/data --networkid 100 --verbosity 3 --unlock $ACCOUNT --password $INSTALLDIR/pwd --rpc --rpcport 8545 --rpcaddr 0.0.0.0 --rpcapi hpb,web3,admin,txpool,debug,personal,net,miner,prometheus 
+ExecStart=$INSTALLDIR/ghpb --datadir $INSTALLDIR/node/data --networkid 100 --verbosity 3 --unlock $ACCOUNT --password $INSTALLDIR/pwd --rpc --rpcport 19008 --rpcaddr 127.0.0.1 --rpcapi hpb,web3,admin,txpool,debug,personal,net,miner,prometheus 
 Restart=on-failure
 
 [Install]
@@ -336,7 +336,7 @@ function catchlog()
 
 function attach()
 {
-    $INSTALLDIR/ghpb attach http://127.0.0.1:8545
+    $INSTALLDIR/ghpb attach http://127.0.0.1:19008
 }
 
 function start()
