@@ -7,6 +7,8 @@ INSTALLDIR=/opt/ghpb-bin
 UPDATEKERNEL=0
 FILEPATH=$0
 
+HTTPSERVER="http://47.94.20.30"
+
 # 定义函数
 function log()
 {
@@ -20,7 +22,7 @@ function log()
 
 function updateKernel()
 {
-    wget -P $TMPDIR https://github.com/xueqianLu/common_files/raw/master/other/update_kernel_eng.tar.gz > wget.log 2>&1
+    wget -P $TMPDIR ${HTTPSERVER}/update_ubuntu_kernel/update_kernel_eng.tar.gz > wget.log 2>&1
     ret=$?
     if [ $ret -eq 0 ]
     then
@@ -46,7 +48,7 @@ function updateKernel()
 
 function kernelCheck()
 {
-    wget -P $TMPDIR https://github.com/hpb-project/libboe/raw/master/test/boehashtest > wget.log 2>&1 
+    wget -P $TMPDIR ${HTTPSERVER}/libboe/test/boehashtest > wget.log 2>&1
     ret=$?
     if [ $ret -ne 0 ] ;then
         log "下载测试程序失败, 日志如下:"
@@ -75,15 +77,15 @@ function kernelCheck()
 function getNewGhpb()
 {
     log "下载最新版ghpb"
-    NewGhpb=`curl https://github.com/hpb-project/hpb-release/tree/master/bin 2>/dev/null | grep -Eo "ghpb-v([0-9].)+tar.gz" | uniq | sort -r  | head -n 1 | awk -F . 'BEGIN{OFS="."} {print $1,$2,$3,$4}'`
+    NewGhpb=`curl ${HTTPSERVER}/hpb-release/bin 2>/dev/null | grep -Eo "ghpb-v([0-9].)+tar.gz" | uniq | sort -r  | head -n 1 | awk -F . 'BEGIN{OFS="."} {print $1,$2,$3,$4}'`
     if [ "$NewGhpb" == "" ]; then
         log "检测最新版本失败，curl 详细输出如下："
-        curl https://github.com/hpb-project/hpb-release/tree/master/bin
+        curl ${HTTPSERVER}/hpb-release/bin
         exit 1
     fi
     log "当前最新版本为 $NewGhpb"
     tarball=${NewGhpb}.tar.gz
-    url="https://github.com/hpb-project/hpb-release/raw/master/bin/$tarball"
+    url="${HTTPSERVER}/hpb-release/bin/$tarball"
     wget $url > wget.log 2>&1
     ret=$?
     if [ $ret -eq 0 ];then
@@ -101,7 +103,7 @@ function getNewGhpb()
 function getGensis()
 {
     log "下载gensis.json"
-    wget https://raw.githubusercontent.com/hpb-project/hpb-release/master/config/gensis.json > wget.log 2>&1
+    wget ${HTTPSERVER}/hpb-release/config/gensis.json > wget.log 2>&1
     ret=$?
     if [ $ret -ne 0 ];then
         log "下载gensis.json失败, 日志如下:"
