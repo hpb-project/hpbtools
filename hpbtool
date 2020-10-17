@@ -77,24 +77,27 @@ function kernelCheck()
 function getNewGhpb()
 {
     log "下载最新版ghpb"
-    NewGhpb=`curl ${HTTPSERVER}/hpb-release/bin 2>/dev/null | grep -Eo "ghpb-v([0-9].)+tar.gz" | uniq | sort -r  | head -n 1 | awk -F . 'BEGIN{OFS="."} {print $1,$2,$3,$4}'`
-    if [ "$NewGhpb" == "" ]; then
-        log "检测最新版本失败，curl 详细输出如下："
-        curl ${HTTPSERVER}/hpb-release/bin
-        exit 1
-    fi
-    log "当前最新版本为 $NewGhpb"
-    tarball=${NewGhpb}.tar.gz
-    url="${HTTPSERVER}/hpb-release/bin/$tarball"
-    wget $url > wget.log 2>&1
+    wget -P $TMPDIR ${HTTPSERVER}/hpb-release/bin/allversion.txt > wget.log 2>&1
     ret=$?
     if [ $ret -eq 0 ];then
-        tar zxvf $tarball >/dev/null 2>&1
-        cp $NewGhpb/* $INSTALLDIR/
-        chmod 755 $INSTALLDIR -R
-        return $?
+        NewGhpb=`cat $TMPDIR/allversion.txt | grep -Eo "ghpb-v([0-9].)+tar.gz" | uniq | sort -r  | head -n 1 | awk -F . 'BEGIN{OFS="."} {print $1,$2,$3,$4}'`
+        log "当前最新版本为 $NewGhpb"
+        tarball=${NewGhpb}.tar.gz
+        url="${HTTPSERVER}/hpb-release/bin/$tarball"
+        wget $url > wget.log 2>&1
+        ret=$?
+        if [ $ret -eq 0 ];then
+            tar zxvf $tarball >/dev/null 2>&1
+            cp $NewGhpb/* $INSTALLDIR/
+            chmod 755 $INSTALLDIR -R
+            return $?
+        else
+            log "下载最新版本失败, 日志如下:"
+            cat wget.log
+            exit 1
+        fi
     else
-        log "下载最新版本失败, 日志如下:"
+        log "下载版本列表失败, 日志如下:"
         cat wget.log
         exit 1
     fi
